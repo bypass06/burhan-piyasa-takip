@@ -1240,7 +1240,14 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 // ══ SUPABASE ENTEGRASYONU ══
 const SUPA_URL = 'https://owpmmeyhdmoegrxdoioz.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93cG1tZXloZG1vZWdyeGRvaW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NjQzNTQsImV4cCI6MjA5NTU0MDM1NH0.L5FurOEi3AiQY03dZ5ROpzGtx9P86HkH2ilO0xk7PHo';
-const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+  auth: {
+    storageKey: 'bpt_auth',
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false
+  }
+});
 
 let currentUser = null;
 let authMode = 'login';

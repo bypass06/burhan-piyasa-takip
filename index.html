@@ -1347,8 +1347,15 @@ async function saveTradeToSupabase(trade){
 }
 
 async function deleteTradeFromSupabase(trade){
-  if(!currentUser||!trade._supa_id) return;
-  try{await supaDelete2('portfolio',trade._supa_id);}catch(e){console.error('deleteTradeFromSupabase:',e);}
+  if(!currentUser) return;
+  try{
+    if(trade._supa_id){
+      await supaDelete2('portfolio',trade._supa_id);
+    } else {
+      // _supa_id yoksa sym+date+amount ile bul ve sil
+      await fetch(`${SUPA_URL}/rest/v1/portfolio?user_id=eq.${currentUser.id}&sym=eq.${trade.sym}&date=eq.${trade.date}&amount=eq.${trade.amount}&type=eq.${trade.type}`,{method:'DELETE',headers:supaHeaders()});
+    }
+  }catch(e){console.error('deleteTradeFromSupabase:',e);}
 }
 
 async function saveSettingsToSupabase(){
@@ -3925,8 +3932,10 @@ function renderHistory(pos){
 
 function deleteTrade(id, sym){
   if(!confirm('Bu işlemi silmek istiyor musun?')) return;
+  const trade = portfolio.find(t=>t.id===id);
   portfolio=portfolio.filter(t=>t.id!==id);
   savePF();
+  if(trade) deleteTradeFromSupabase(trade);
   openHistoryModal(sym);
   renderPortfolio();
 }

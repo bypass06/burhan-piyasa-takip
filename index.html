@@ -18,7 +18,7 @@
 </style>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Burhan Piyasa Takip v11</title>
+<title>Burhan Piyasa Takip v10.35</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -4178,7 +4178,7 @@ function importPortfolio(event){
   const file=event.target.files[0];
   if(!file) return;
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=async e=>{
     try{
       const data=JSON.parse(e.target.result);
       const trades=data.trades||data;
@@ -4187,7 +4187,22 @@ function importPortfolio(event){
         portfolio=trades;
         savePF();
         renderPortfolio();
-        alert('Import başarılı. '+trades.length+' işlem yüklendi.');
+        // Supabase'e senkronize et
+        if(currentUser){
+          try{
+            // Önce mevcut verileri sil
+            await sDel('portfolio',`user_id=eq.${currentUser.id}`);
+            // Sonra hepsini tek tek ekle
+            for(const trade of trades){
+              await saveTradeToSupabase(trade);
+            }
+            alert('Import başarılı. '+trades.length+' işlem yüklendi ve buluta senkronize edildi.');
+          } catch(err){
+            alert('Import başarılı ancak bulut senkronizasyonu başarısız: '+err.message);
+          }
+        } else {
+          alert('Import başarılı. '+trades.length+' işlem yüklendi.');
+        }
       }
     }catch(err){
       alert('Hata: '+err.message);

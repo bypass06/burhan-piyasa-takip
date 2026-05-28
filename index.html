@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Burhan Piyasa Takip v10.35</title>
@@ -191,7 +192,19 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 .row-lvl-val{color:var(--muted2);}
 .row-lvl-val.active{color:var(--yellow);font-weight:700;}
 
-/* ── SPARKLINE ── */
+/* ── AUTH MODAL ── */
+#auth-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);}
+#auth-box{background:#0d0f18;border:1px solid rgba(124,106,255,0.3);border-radius:16px;padding:36px;width:380px;max-width:95vw;}
+#auth-box h2{font-family:'Space Mono',monospace;font-size:18px;font-weight:800;color:#f0f2f7;margin-bottom:6px;}
+#auth-box p{font-size:11px;color:#52527a;margin-bottom:24px;font-family:'Space Mono',monospace;}
+#auth-box input{width:100%;background:#0a0c14;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#f0f2f7;font-family:'Space Mono',monospace;font-size:12px;margin-bottom:12px;box-sizing:border-box;outline:none;}
+#auth-box input:focus{border-color:rgba(124,106,255,0.5);}
+#auth-btn{width:100%;background:#7c6aff;border:none;border-radius:8px;padding:12px;color:#fff;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;}
+#auth-btn:hover{background:#6b5ae0;}
+#auth-toggle{width:100%;background:none;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;color:#7070a0;font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;}
+#auth-toggle:hover{border-color:rgba(255,255,255,0.2);color:#9090c0;}
+#auth-msg{font-family:'Space Mono',monospace;font-size:11px;margin-top:10px;text-align:center;min-height:16px;}
+#auth-logo{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#7c6aff,#4f46e5);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:22px;}
 .sparkline{width:100%;max-width:110px;height:28px;display:block;overflow:hidden;}
 
 /* ── BADGE ── */
@@ -614,6 +627,20 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 </head>
 <body>
 
+<!-- AUTH MODAL -->
+<div id="auth-overlay">
+  <div id="auth-box">
+    <div id="auth-logo">📈</div>
+    <h2>Burhan Piyasa Takip</h2>
+    <p id="auth-subtitle">Hesabınıza giriş yapın</p>
+    <input type="email" id="auth-email" placeholder="E-posta adresi" />
+    <input type="password" id="auth-password" placeholder="Şifre" />
+    <button id="auth-btn" onclick="authAction()">Giriş Yap</button>
+    <button id="auth-toggle" onclick="toggleAuthMode()">Hesabın yok mu? Kayıt ol</button>
+    <div id="auth-msg"></div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <div class="header">
   <div class="logo">
@@ -658,6 +685,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
       <div id="rest-update" style="font-family:'Space Mono',monospace;font-size:9px;color:#3a3f55;">REST: —</div>
     </div>
     <button class="hbtn" onclick="reconnectWS()" title="Yeniden bağlan">↻</button>
+    <button class="hbtn" onclick="signOut()" title="Çıkış yap" style="color:#f43f5e;">⏻</button>
   </div>
 </div>
 
@@ -1208,6 +1236,167 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 </div>
 
 <script>
+// ══ SUPABASE ENTEGRASYONU ══
+const SUPA_URL = 'https://owpmmeyhdmoegrxdoioz.supabase.co';
+const SUPA_KEY = 'sb_publishable_f0g5dTGfIvFL3X38VLX0gg_gILHfo7D';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+let currentUser = null;
+let authMode = 'login'; // 'login' veya 'register'
+
+function toggleAuthMode(){
+  authMode = authMode==='login'?'register':'login';
+  document.getElementById('auth-btn').textContent = authMode==='login'?'Giriş Yap':'Kayıt Ol';
+  document.getElementById('auth-toggle').textContent = authMode==='login'?'Hesabın yok mu? Kayıt ol':'Zaten hesabın var mı? Giriş yap';
+  document.getElementById('auth-subtitle').textContent = authMode==='login'?'Hesabınıza giriş yapın':'Yeni hesap oluşturun';
+  document.getElementById('auth-msg').textContent = '';
+}
+
+async function authAction(){
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const msg = document.getElementById('auth-msg');
+  const btn = document.getElementById('auth-btn');
+
+  if(!email||!password){ msg.style.color='#f43f5e'; msg.textContent='E-posta ve şifre gerekli'; return; }
+
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  try {
+    let result;
+    if(authMode==='login'){
+      result = await supa.auth.signInWithPassword({email, password});
+    } else {
+      result = await supa.auth.signUp({email, password});
+    }
+
+    if(result.error){
+      msg.style.color='#f43f5e';
+      msg.textContent = result.error.message;
+    } else if(authMode==='register' && !result.data.session){
+      msg.style.color='#22c55e';
+      msg.textContent = 'Doğrulama e-postası gönderildi, e-postanızı kontrol edin.';
+    } else {
+      currentUser = result.data.user;
+      document.getElementById('auth-overlay').style.display='none';
+      await loadFromSupabase();
+    }
+  } catch(e) {
+    msg.style.color='#f43f5e';
+    msg.textContent = 'Bir hata oluştu';
+  }
+
+  btn.textContent = authMode==='login'?'Giriş Yap':'Kayıt Ol';
+  btn.disabled = false;
+}
+
+// Enter tuşu ile giriş
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && document.getElementById('auth-overlay').style.display!=='none'){
+    authAction();
+  }
+});
+
+// Oturum kontrolü
+supa.auth.onAuthStateChange((event, session)=>{
+  if(session?.user){
+    currentUser = session.user;
+    document.getElementById('auth-overlay').style.display='none';
+  } else {
+    currentUser = null;
+    document.getElementById('auth-overlay').style.display='flex';
+  }
+});
+
+// Supabase'den veri yükle
+async function loadFromSupabase(){
+  if(!currentUser) return;
+
+  // Portföy işlemlerini yükle
+  const {data: trades} = await supa
+    .from('portfolio')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', {ascending: true});
+
+  if(trades && trades.length>0){
+    portfolio = trades.map(t=>({
+      sym: t.sym,
+      type: t.type,
+      amount: parseFloat(t.amount),
+      price: parseFloat(t.price),
+      priceTRY: t.price_try ? parseFloat(t.price_try) : null,
+      currency: t.currency||'USDT',
+      date: t.date,
+      note: t.note||'',
+      realizedPnl: t.realized_pnl ? parseFloat(t.realized_pnl) : null,
+      _supa_id: t.id
+    }));
+    localStorage.setItem('portfolio', JSON.stringify(portfolio));
+  }
+
+  // Ayarları yükle
+  const {data: settings} = await supa
+    .from('user_settings')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .single();
+
+  if(settings){
+    if(settings.fav_crypto?.length) favCrypto = settings.fav_crypto;
+    if(settings.fav_bist?.length) favBist = settings.fav_bist;
+    localStorage.setItem('fav_crypto', JSON.stringify(favCrypto));
+    localStorage.setItem('fav_bist', JSON.stringify(favBist));
+  }
+
+  renderPortfolio();
+  renderFavKripto();
+  renderFavBist();
+}
+
+// Supabase'e işlem kaydet
+async function saveTradeToSupabase(trade){
+  if(!currentUser) return;
+  const {data} = await supa.from('portfolio').insert({
+    user_id: currentUser.id,
+    sym: trade.sym,
+    type: trade.type,
+    amount: trade.amount,
+    price: trade.price,
+    price_try: trade.priceTRY||null,
+    currency: trade.currency||'USDT',
+    date: trade.date,
+    note: trade.note||'',
+    realized_pnl: trade.realizedPnl||null
+  }).select().single();
+  if(data) trade._supa_id = data.id;
+}
+
+// Supabase'den işlem sil
+async function deleteTradeFromSupabase(trade){
+  if(!currentUser||!trade._supa_id) return;
+  await supa.from('portfolio').delete().eq('id', trade._supa_id);
+}
+
+// Ayarları Supabase'e kaydet
+async function saveSettingsToSupabase(){
+  if(!currentUser) return;
+  await supa.from('user_settings').upsert({
+    user_id: currentUser.id,
+    fav_crypto: favCrypto,
+    fav_bist: favBist,
+    updated_at: new Date().toISOString()
+  }, {onConflict: 'user_id'});
+}
+
+// Çıkış yap butonu
+function signOut(){
+  supa.auth.signOut();
+  portfolio = [];
+  localStorage.clear();
+}
+
 'use strict';
 
 // ══════════════════════════════════════════
@@ -1834,6 +2023,7 @@ function toggleFav(sym,e){
   const i=favCrypto.indexOf(sym);
   if(i>=0) favCrypto.splice(i,1); else favCrypto.push(sym);
   localStorage.setItem('fav_crypto',JSON.stringify(favCrypto));
+  saveSettingsToSupabase();
   renderCryptoList();
   renderFavKripto();
 }
@@ -2736,6 +2926,7 @@ function toggleFavBist(code,e){
   const i=favBist.indexOf(code);
   if(i>=0) favBist.splice(i,1); else favBist.push(code);
   localStorage.setItem('fav_bist',JSON.stringify(favBist));
+  saveSettingsToSupabase();
   renderBistList();
   renderFavBist();
 }
@@ -3680,6 +3871,10 @@ function saveTrade(){
 
   portfolio.push(trade);
   savePF();
+  // Supabase'e kaydet
+  saveTradeToSupabase(trade);
+  // Ayarları da senkronize et
+  saveSettingsToSupabase();
   selectedMatchId=null;
   closeTradeModal();
   renderPortfolio();

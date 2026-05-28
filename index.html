@@ -1284,10 +1284,13 @@ document.addEventListener('keydown', e=>{
   if(e.key==='Enter' && document.getElementById('auth-overlay').style.display!=='none') authAction();
 });
 
-supa.auth.onAuthStateChange((event, session)=>{
+supa.auth.onAuthStateChange(async (event, session)=>{
   if(session?.user){
     currentUser = session.user;
     document.getElementById('auth-overlay').style.display='none';
+    if(event==='SIGNED_IN' || event==='INITIAL_SESSION'){
+      await loadFromSupabase();
+    }
   } else {
     currentUser = null;
     document.getElementById('auth-overlay').style.display='flex';

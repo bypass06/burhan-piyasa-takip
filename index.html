@@ -4043,8 +4043,7 @@ function renderHistory(pos){
 
   // Gerçekleşmiş toplam — TRY ve USD işlemleri ayrı topla (alım komisyonu da dahil)
   const sellTrades=pos.history.filter(t=>t.type==='sell'&&t.realizedPnl!=null);
-  const buyComTRY=pos.history.filter(t=>t.type==='buy'&&t.commissionTRY).reduce((s,t)=>s+t.commissionTRY,0);
-  const realizedTRY=sellTrades.filter(t=>t.currency==='TRY').reduce((s,t)=>s+t.realizedPnl,0)-buyComTRY;
+  const realizedTRY=sellTrades.filter(t=>t.currency==='TRY').reduce((s,t)=>s+t.realizedPnl,0);
   const realizedUSD=sellTrades.filter(t=>t.currency!=='TRY').reduce((s,t)=>s+t.realizedPnl,0);
   // Gösterim için dominant currency seç
   const hasTRY=sellTrades.some(t=>t.currency==='TRY');

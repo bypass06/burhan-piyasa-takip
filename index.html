@@ -1301,18 +1301,18 @@ function sHeaders(extra={}){
   return {'Content-Type':'application/json','apikey':SUPA_ANON,'Authorization':`Bearer ${supaToken||SUPA_ANON}`,...extra};
 }
 async function sGet(table, filter=''){
-  const r = await fetch(`${SUPA_URL}/rest/v3.0/${table}?${filter}&order=created_at.asc`, {headers: sHeaders()});
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${filter}&order=created_at.asc`, {headers: sHeaders()});
   return r.json();
 }
 async function sPost(table, data){
-  const r = await fetch(`${SUPA_URL}/rest/v3.0/${table}`, {method:'POST', headers: sHeaders({'Prefer':'return=representation'}), body: JSON.stringify(data)});
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {method:'POST', headers: sHeaders({'Prefer':'return=representation'}), body: JSON.stringify(data)});
   return r.json();
 }
 async function sDel(table, filter){
-  await fetch(`${SUPA_URL}/rest/v3.0/${table}?${filter}`, {method:'DELETE', headers: sHeaders()});
+  await fetch(`${SUPA_URL}/rest/v1/${table}?${filter}`, {method:'DELETE', headers: sHeaders()});
 }
 async function sUpsert(table, data, conflict){
-  const r = await fetch(`${SUPA_URL}/rest/v3.0/${table}?on_conflict=${conflict}`, {method:'POST', headers: sHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}), body: JSON.stringify(data)});
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?on_conflict=${conflict}`, {method:'POST', headers: sHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}), body: JSON.stringify(data)});
   return r.json();
 }
 

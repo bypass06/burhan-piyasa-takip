@@ -469,7 +469,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 .pf-closed-val{font-size:13px;font-weight:700;font-family:'Space Mono',monospace;}
 .pf-closed-actions{display:flex;gap:6px;padding:0 14px 11px;}
 
-/* ══ PORTFÖY KART — v10.35 yeni tasarım ══ */
+/* ══ PORTFÖY KART — v3.0 yeni tasarım ══ */
 .pf-card{
   background:#0f1117;
   border:1px solid rgba(255,255,255,0.07);
@@ -710,7 +710,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
     </div>
     <div>
       <div class="logo-text">Burhan Piyasa Takip</div>
-      <div class="logo-sub">v1.0 Final</div>
+      <div class="logo-sub">v3.0 Final</div>
     </div>
   </div>
   <div class="header-right">
@@ -1301,18 +1301,18 @@ function sHeaders(extra={}){
   return {'Content-Type':'application/json','apikey':SUPA_ANON,'Authorization':`Bearer ${supaToken||SUPA_ANON}`,...extra};
 }
 async function sGet(table, filter=''){
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${filter}&order=created_at.asc`, {headers: sHeaders()});
+  const r = await fetch(`${SUPA_URL}/rest/v3.0/${table}?${filter}&order=created_at.asc`, {headers: sHeaders()});
   return r.json();
 }
 async function sPost(table, data){
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {method:'POST', headers: sHeaders({'Prefer':'return=representation'}), body: JSON.stringify(data)});
+  const r = await fetch(`${SUPA_URL}/rest/v3.0/${table}`, {method:'POST', headers: sHeaders({'Prefer':'return=representation'}), body: JSON.stringify(data)});
   return r.json();
 }
 async function sDel(table, filter){
-  await fetch(`${SUPA_URL}/rest/v1/${table}?${filter}`, {method:'DELETE', headers: sHeaders()});
+  await fetch(`${SUPA_URL}/rest/v3.0/${table}?${filter}`, {method:'DELETE', headers: sHeaders()});
 }
 async function sUpsert(table, data, conflict){
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?on_conflict=${conflict}`, {method:'POST', headers: sHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}), body: JSON.stringify(data)});
+  const r = await fetch(`${SUPA_URL}/rest/v3.0/${table}?on_conflict=${conflict}`, {method:'POST', headers: sHeaders({'Prefer':'resolution=merge-duplicates,return=representation'}), body: JSON.stringify(data)});
   return r.json();
 }
 
@@ -1334,8 +1334,8 @@ async function authAction(){
   btn.textContent='...'; btn.disabled=true;
   try{
     const url = authMode==='login'
-      ? `${SUPA_URL}/auth/v1/token?grant_type=password`
-      : `${SUPA_URL}/auth/v1/signup`;
+      ? `${SUPA_URL}/auth/v3.0/token?grant_type=password`
+      : `${SUPA_URL}/auth/v3.0/signup`;
     const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_ANON}, body:JSON.stringify({email,password:pw})});
     const d = await r.json();
     if(d.error||d.error_description||d.msg){
@@ -3282,11 +3282,11 @@ function renderPortfolio(){
     if(pnlBar){
       pnlBar.className=`pf-pnl-bar ${pnlPos?'pf-pnl-profit':'pf-pnl-loss'}`;
       const pill=pnlBar.querySelector('.pf-pct-pill');
-      if(pill){ pill.className=`pf-pct-pill ${pnlPos?'pf-pct-pos':'pf-pct-neg'}`; pill.textContent=pnlSign+pos.pnlPct.toFixed(2)+'%'; }
+      if(pill){ pill.className=`pf-pct-pill ${pnlPos?'pf-pct-pos':'pf-pct-neg'}`; pill.textContent=pnlSign+Math.abs(pos.pnlPct).toFixed(2)+'%'; }
       const val=pnlBar.querySelector('.pf-pnl-val');
-      if(val) val.textContent=pnlSign+mainPfx+fpTRY(pos.pnlTRY);
+      if(val) val.textContent=pnlSign+mainPfx+fpTRY(Math.abs(pos.pnlTRY));
       const usd=pnlBar.querySelector('.pf-pnl-usd');
-      if(usd){ usd.style.color=pnlPos?'rgba(0,230,118,0.6)':'rgba(255,82,82,0.6)'; usd.textContent=pnlSign+subPfx+fpUSD(pos.pnlUSDT); }
+      if(usd){ usd.style.color=pnlPos?'rgba(0,230,118,0.6)':'rgba(255,82,82,0.6)'; usd.textContent=pnlSign+subPfx+fpUSD(Math.abs(pos.pnlUSDT)); }
     }
   });
 }
@@ -3458,11 +3458,11 @@ function renderPfCard(pos){
       <div class="pf-pnl-bar ${pnlCls}">
         <div>
           <div class="pf-pnl-label">Gerçekleşmemiş K/Z</div>
-          <div class="pf-pct-pill ${pos.pnlUSDT>=0?'pf-pct-pos':'pf-pct-neg'}">${pnlSign}${pos.pnlPct.toFixed(2)}%</div>
+          <div class="pf-pct-pill ${pos.pnlUSDT>=0?'pf-pct-pos':'pf-pct-neg'}">${pnlSign}${Math.abs(pos.pnlPct).toFixed(2)}%</div>
         </div>
         <div style="text-align:right;">
-          <div class="pf-pnl-val">${pnlSign}${mainPfx}${fpTRY(pos.pnlTRY)}</div>
-          <div class="pf-pnl-usd" style="color:${pos.pnlUSDT>=0?'rgba(0,230,118,0.6)':'rgba(255,82,82,0.6)'};">${pnlSign}${subPfx}${fpUSD(pos.pnlUSDT)}</div>
+          <div class="pf-pnl-val">${pnlSign}${mainPfx}${fpTRY(Math.abs(pos.pnlTRY))}</div>
+          <div class="pf-pnl-usd" style="color:${pos.pnlUSDT>=0?'rgba(0,230,118,0.6)':'rgba(255,82,82,0.6)'};">${pnlSign}${subPfx}${fpUSD(Math.abs(pos.pnlUSDT))}</div>
         </div>
       </div>
 

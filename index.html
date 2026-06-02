@@ -549,10 +549,18 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 .pf-drop-price{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto;}
 
 /* Geçmiş tablosu */
-.pf-hist-table{width:100%;border-collapse:collapse;}
-.pf-hist-table th{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);letter-spacing:.5px;}
-.pf-hist-table td{padding:9px 8px;font-family:'Space Mono',monospace;font-size:12px;border-bottom:1px solid var(--border);}
+.pf-hist-table{width:100%;border-collapse:collapse;min-width:680px;}
+.pf-hist-table th{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);letter-spacing:.5px;white-space:nowrap;}
+.pf-hist-table td{padding:10px 12px;font-family:'Space Mono',monospace;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle;}
 .pf-hist-table tr:last-child td{border-bottom:none;}
+.pf-hist-table th:nth-child(1){width:60px;}
+.pf-hist-table th:nth-child(2){width:90px;}
+.pf-hist-table th:nth-child(3){width:110px;}
+.pf-hist-table th:nth-child(4){width:100px;}
+.pf-hist-table th:nth-child(5){width:110px;}
+.pf-hist-table th:nth-child(6){width:90px;}
+.pf-hist-table th:nth-child(7){width:130px;}
+.pf-hist-table th:nth-child(8){width:80px;}
 .pf-hist-buy{color:var(--green);}
 .pf-hist-sell{color:var(--red);}
 .pf-del-btn{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;transition:color .2s;padding:2px 4px;}
@@ -1178,7 +1186,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 </div>
 
 <div class="modal-overlay" id="history-modal-overlay">
-  <div class="modal" style="max-width:680px;">
+  <div class="modal" style="max-width:860px;">
     <div class="modal-header">
       <div class="modal-asset-left">
         <div id="hm-logo"></div>

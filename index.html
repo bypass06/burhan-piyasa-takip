@@ -1127,6 +1127,19 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
         <div id="tm-match-list" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;"></div>
       </div>
 
+      <!-- Komisyon -->
+      <div class="pf-field">
+        <label class="pf-label">KOMİSYON <span style="color:var(--muted);font-weight:400;font-size:9px;margin-left:4px;">(İSTEĞE BAĞLI)</span></label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="pf-input" id="tm-commission" type="number" placeholder="0" step="any" min="0" style="flex:1;" oninput="updateCommissionHint()">
+          <div style="display:flex;gap:4px;">
+            <button class="pf-cur-btn active" id="tm-com-try-btn" onclick="setCommissionMode('TRY')">₺ TRY</button>
+            <button class="pf-cur-btn" id="tm-com-pct-btn" onclick="setCommissionMode('PCT')">% Oran</button>
+          </div>
+        </div>
+        <div id="tm-commission-hint" style="font-size:10px;color:var(--muted);margin-top:5px;font-family:'Space Mono',monospace;min-height:14px;"></div>
+      </div>
+
       <!-- Not -->
       <div class="pf-field">
         <label class="pf-label">Not (isteğe bağlı)</label>
@@ -1330,6 +1343,7 @@ async function loadFromSupabase(){
         currency: t.currency||'USDT', date: t.date, note: t.note||'',
         avgCostAtSale: t.avg_cost_at_sale ? parseFloat(t.avg_cost_at_sale) : null,
         realizedPnl: t.realized_pnl ? parseFloat(t.realized_pnl) : null,
+        commissionTRY: t.commission_try ? parseFloat(t.commission_try) : undefined,
         matchedBuyId: t.matched_buy_id||null,
         _supa_id: t.id
       }));
@@ -1357,6 +1371,7 @@ async function saveTradeToSupabase(trade){
       date: trade.date, note: trade.note||'',
       avg_cost_at_sale: trade.avgCostAtSale||null,
       realized_pnl: trade.realizedPnl||null,
+      commission_try: trade.commissionTRY||null,
       matched_buy_id: trade.matchedBuyId||null
     });
     if(Array.isArray(res)&&res[0]) trade._supa_id=res[0].id;
@@ -3071,6 +3086,7 @@ function calcPosition(sym){
   const isBist=isBistSym(sym);
   const isEmtia=isEmtiaSym(sym);
   const isTRYBased=isBist||isEmtia;
+  let firstBuyDate=null; // Pozisyon yaşı için
 
   trades.forEach(t=>{
     const usdttry=getUSDTTRY()||1;
@@ -3083,19 +3099,40 @@ function calcPosition(sym){
       priceTRY  = priceUSDT * usdttry;
     }
 
+    // Komisyon (varsa) TRY cinsinden maliyete ekle
+    const comTRY = t.commissionTRY || 0;
+    const comUSDT = comTRY / usdttry;
+
     if(t.type==='buy'){
-      costUSDT += t.amount * priceUSDT;
-      costTRY  += t.amount * priceTRY;
+      costUSDT += t.amount * priceUSDT + comUSDT;
+      costTRY  += t.amount * priceTRY  + comTRY;
       lot      += t.amount;
+      if(!firstBuyDate) firstBuyDate = t.date;
     } else {
       const ratio=Math.min(lot>0?t.amount/lot:1, 1);
       costUSDT -= costUSDT * ratio;
       costTRY  -= costTRY  * ratio;
       lot      -= t.amount;
       if(lot<0) lot=0;
+      // Eğer lot sıfırlandıysa firstBuyDate sıfırla
+      if(lot<=0.000001) firstBuyDate=null;
     }
     history.push({...t, lotAfter:lot});
   });
+
+  // Aktif pozisyon varsa firstBuyDate'i en son alım sonrası gerçek ilk alımdan al
+  if(lot>0.000001 && !firstBuyDate){
+    const lastBuy=trades.filter(t=>t.type==='buy').pop();
+    if(lastBuy) firstBuyDate=lastBuy.date;
+  }
+
+  // Pozisyon yaşı (gün)
+  let ageDays=null;
+  if(firstBuyDate && lot>0.000001){
+    const now=new Date();
+    const first=new Date(firstBuyDate);
+    ageDays=Math.floor((now-first)/(1000*60*60*24));
+  }
 
   const avgUSDT = lot>0 ? costUSDT/lot : 0;
   const avgTRY  = lot>0 ? costTRY /lot : 0;
@@ -3121,7 +3158,8 @@ function calcPosition(sym){
 
   return {sym, lot, costUSDT, costTRY, avgUSDT, avgTRY,
     valueUSDT, valueTRY, pnlUSDT, pnlTRY, pnlPct,
-    currentUSDT, currentTRY, history, isBist, isEmtia};
+    currentUSDT, currentTRY, history, isBist, isEmtia,
+    ageDays, firstBuyDate};
 }
 
 function getUSDTTRY(){
@@ -3154,13 +3192,8 @@ function renderPortfolio(){
   updateSummaryBar();
   updatePortfolioSummary(positions);
 
-  // İlk render veya sembol listesi değişmişse tam yeniden çiz
-  const grid=document.getElementById('pf-grid');
-  const existingIds=grid?[...grid.querySelectorAll('.pf-card')].map(el=>el.id):[];
-  const newIds=positions.map(p=>`pfc-${p.sym}`);
-  const needsFullRender=!grid||JSON.stringify(existingIds)!==JSON.stringify(newIds);
-
-  if(needsFullRender){
+  // Her zaman tam render — badge ve dinamik içerik güncel kalsın
+  {
     const activeHTML=`<div class="pf-grid" id="pf-grid">${positions.map(pos=>renderPfCard(pos)).join('')}</div>`;
     const closedHTML=closedPositions.length?`
       <div class="pf-closed-section">
@@ -3190,6 +3223,22 @@ function renderPortfolio(){
     if(statSubs[2]) statSubs[2].textContent=subPfx+fpUSD(pos.valueUSDT);
     if(statVals[3]) statVals[3].textContent=mainPfx+fpTRY(pos.costTRY);
     if(statSubs[3]) statSubs[3].textContent=subPfx+fpUSD(pos.costUSDT);
+
+    // Pozisyon yaşı badge güncelle
+    const ageBadgeEl=card.querySelector('.pf-age-badge');
+    if(pos.ageDays!==null && pos.ageDays>=0){
+      const d=pos.ageDays;
+      const ageColor=d<30?'#22c55e':d<90?'#f59e0b':'#f43f5e';
+      const ageBg=d<30?'#0d2818':d<90?'#251500':'#2d0a14';
+      const ageBorder=d<30?'#166534':d<90?'#854d0e':'#7f1d1d';
+      const ageLabel=d===0?'Bugün':d===1?'1 gün':d<30?d+'g':d<365?Math.floor(d/30)+'ay':(d/365).toFixed(1)+'y';
+      if(ageBadgeEl){
+        ageBadgeEl.textContent='⏱ '+ageLabel;
+        ageBadgeEl.style.color=ageColor;
+        ageBadgeEl.style.background=ageBg;
+        ageBadgeEl.style.borderColor=ageBorder;
+      }
+    }
 
     // K/Z bar
     const pnlBar=card.querySelector('.pf-pnl-bar');
@@ -3235,11 +3284,12 @@ function fpUSD(v){ return fp2(v,'$'); }
 
 function renderClosedCard(pos){
   const usdttry=getUSDTTRY();
-  const realized=pos.history.filter(t=>t.type==='sell'&&t.realizedPnl!=null).reduce((s,t)=>s+t.realizedPnl,0);
+  const buyCommission=pos.history.filter(t=>t.type==='buy'&&t.commissionTRY).reduce((s,t)=>s+t.commissionTRY,0);
   const realizedTRY=pos.history.filter(t=>t.type==='sell'&&t.realizedPnl!=null)
-    .reduce((s,t)=>s+(t.currency==='TRY'?t.realizedPnl:t.realizedPnl*usdttry),0);
+    .reduce((s,t)=>s+(t.currency==='TRY'?t.realizedPnl:t.realizedPnl*usdttry),0)-buyCommission;
+  const realized=realizedTRY;
   const isPos=realizedTRY>=0;
-  const sign=isPos?'+':'';
+  const sign=isPos?'+':'-';
   const color=isPos?'var(--green)':'var(--red)';
   const name=pos.isEmtia?(emtiaPrices[pos.sym]?.name||pos.sym):pos.sym;
   const tag=pos.isEmtia?'Emtia':pos.isBist?'BIST':'Kripto';
@@ -3310,6 +3360,17 @@ function renderPfCard(pos){
     ? `<span class="pf-tag pf-tag-bist" style="margin-left:6px;">📈 BIST</span>`
     : `<span class="pf-tag pf-tag-crypto" style="margin-left:6px;">₿ Kripto</span>`;
 
+  // Pozisyon yaşı badge
+  let ageBadge='';
+  if(pos.ageDays!==null && pos.ageDays>=0){
+    const d=pos.ageDays;
+    const ageColor = d<30 ? '#22c55e' : d<90 ? '#f59e0b' : '#f43f5e';
+    const ageBg    = d<30 ? '#0d2818' : d<90 ? '#251500' : '#2d0a14';
+    const ageBorder= d<30 ? '#166534' : d<90 ? '#854d0e' : '#7f1d1d';
+    const ageLabel = d===0 ? 'Bugün' : d===1 ? '1 gün' : d<30 ? d+'g' : d<365 ? Math.floor(d/30)+'ay' : (d/365).toFixed(1)+'y';
+    ageBadge=`<span class="pf-age-badge" style="font-family:'Space Mono',monospace;font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px;background:${ageBg};color:${ageColor};border:1px solid ${ageBorder};margin-left:4px;flex-shrink:0;" title="${d} gün açık">⏱ ${ageLabel}</span>`;
+  }
+
   // isim — emtia için tam ad göster
   const displayName=pos.isEmtia?(emtiaPrices[pos.sym]?.name||pos.sym):pos.sym;
 
@@ -3326,7 +3387,7 @@ function renderPfCard(pos){
         <div class="pf-card-info">
           <div class="pf-card-name-row">
             <div class="pf-card-name" title="${displayName}">${displayName}</div>
-            ${tag}
+            ${tag}${ageBadge}
           </div>
           <div class="pf-card-lot">${lotStr}</div>
         </div>
@@ -3694,7 +3755,40 @@ function fillMaxLot(){
 function closeTradeModal(){
   document.getElementById('trade-modal-overlay').classList.remove('open');
   document.getElementById('tm-coin-dropdown').style.display='none';
+  document.getElementById('tm-commission').value='';
+  document.getElementById('tm-commission-hint').textContent='';
+  commissionMode='TRY';
+  document.getElementById('tm-com-try-btn').className='pf-cur-btn active';
+  document.getElementById('tm-com-pct-btn').className='pf-cur-btn';
   document.body.style.overflow='';
+}
+
+let commissionMode='TRY'; // 'TRY' veya 'PCT'
+
+function setCommissionMode(mode){
+  commissionMode=mode;
+  document.getElementById('tm-com-try-btn').className='pf-cur-btn'+(mode==='TRY'?' active':'');
+  document.getElementById('tm-com-pct-btn').className='pf-cur-btn'+(mode==='PCT'?' active':'');
+  updateCommissionHint();
+}
+
+function updateCommissionHint(){
+  const sym=document.getElementById('tm-coin-sym').value.trim();
+  const comVal=parseFloat(document.getElementById('tm-commission').value)||0;
+  const amount=parseFloat(document.getElementById('tm-amount').value)||0;
+  const price=parseFloat(document.getElementById('tm-price').value)||0;
+  const hint=document.getElementById('tm-commission-hint');
+  if(!hint) return;
+  if(comVal<=0){ hint.textContent=''; return; }
+  if(commissionMode==='PCT'){
+    const total=amount*price;
+    if(total>0){
+      const comTRY=total*(comVal/100);
+      hint.innerHTML=`<span style="color:var(--yellow);">≈ ₺${fpTRY(comTRY)} komisyon (${amount} × ${price} × %${comVal})</span>`;
+    }
+  } else {
+    hint.innerHTML=`<span style="color:var(--yellow);">₺${fpTRY(comVal)} sabit komisyon</span>`;
+  }
 }
 
 function setTradeType(t){
@@ -3814,6 +3908,19 @@ function saveTrade(){
   const price=parseTRNum(document.getElementById('tm-price').value);
   const date=document.getElementById('tm-date').value;
   const note=document.getElementById('tm-note').value.trim();
+  const commissionRaw=parseFloat(document.getElementById('tm-commission').value)||0;
+
+  // Komisyon TRY cinsine çevir
+  let commissionTRY=0;
+  if(commissionRaw>0){
+    if(commissionMode==='PCT'){
+      const usdttryNow=getUSDTTRY()||1;
+      const totalTRY = tradeCur==='TRY' ? amount*price : amount*price*usdttryNow;
+      commissionTRY = totalTRY * (commissionRaw/100);
+    } else {
+      commissionTRY = commissionRaw; // Zaten TRY
+    }
+  }
 
   if(!coinSym||!amount||!price||!date){
     alert('Lütfen tüm alanları doldurun.');
@@ -3842,12 +3949,12 @@ function saveTrade(){
 
     if(matchedBuy){
       avgCostAtSale=matchedBuy.price;
-      realizedPnl=(price-avgCostAtSale)*amount;
+      realizedPnl=(price-avgCostAtSale)*amount - commissionTRY;
     } else {
       // Fallback: mevcut ortalama maliyet
       const pos=calcPosition(coinSym);
       avgCostAtSale=isTRY?pos.avgTRY:pos.avgUSDT;
-      realizedPnl=(price-avgCostAtSale)*amount;
+      realizedPnl=(price-avgCostAtSale)*amount - commissionTRY;
     }
   }
 
@@ -3859,6 +3966,7 @@ function saveTrade(){
     amount,price,
     currency:tradeCur,
     date,note,
+    commissionTRY: commissionTRY>0 ? commissionTRY : undefined,
     avgCostAtSale,
     realizedPnl,
     matchedBuyId: tradeType==='sell'&&selectedMatchId&&selectedMatchId!=='auto' ? selectedMatchId : null,
@@ -3893,9 +4001,10 @@ function renderHistory(pos){
 
   const isTRY=pos.isBist||pos.isEmtia;
 
-  // Gerçekleşmiş toplam — TRY ve USD işlemleri ayrı topla
+  // Gerçekleşmiş toplam — TRY ve USD işlemleri ayrı topla (alım komisyonu da dahil)
   const sellTrades=pos.history.filter(t=>t.type==='sell'&&t.realizedPnl!=null);
-  const realizedTRY=sellTrades.filter(t=>t.currency==='TRY').reduce((s,t)=>s+t.realizedPnl,0);
+  const buyComTRY=pos.history.filter(t=>t.type==='buy'&&t.commissionTRY).reduce((s,t)=>s+t.commissionTRY,0);
+  const realizedTRY=sellTrades.filter(t=>t.currency==='TRY').reduce((s,t)=>s+t.realizedPnl,0)-buyComTRY;
   const realizedUSD=sellTrades.filter(t=>t.currency!=='TRY').reduce((s,t)=>s+t.realizedPnl,0);
   // Gösterim için dominant currency seç
   const hasTRY=sellTrades.some(t=>t.currency==='TRY');
@@ -3939,6 +4048,7 @@ function renderHistory(pos){
       <td>${amountStr}</td>
       <td>${pfx}${isTRY?fpTRY(t.price):fpUSD(t.price)}</td>
       <td>${pfx}${isTRY?fpTRY(t.amount*t.price):fpUSD(t.amount*t.price)}</td>
+      <td style="font-family:'Space Mono',monospace;font-size:10px;color:${t.commissionTRY?'#f59e0b':'var(--muted)'};">${t.commissionTRY?'₺'+fpTRY(t.commissionTRY):'—'}</td>
       <td>${pnlCell}</td>
       <td style="color:var(--muted);font-size:10px">${t.note||'—'}</td>
       <td><button class="pf-del-btn" onclick="deleteTrade('${t.id}','${pos.sym}')">🗑</button></td>
@@ -3947,7 +4057,7 @@ function renderHistory(pos){
 
   return`${realizedHtml}<table class="pf-hist-table">
     <thead><tr>
-      <th>TÜR</th><th>TARİH</th><th>MİKTAR</th><th>FİYAT</th><th>TOPLAM</th><th>KAR/ZARAR</th><th>NOT</th><th></th>
+      <th>TÜR</th><th>TARİH</th><th>MİKTAR</th><th>FİYAT</th><th>TOPLAM</th><th>KOMİSYON</th><th>KAR/ZARAR</th><th>NOT</th><th></th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -3980,8 +4090,12 @@ function updateSummaryBar(){
 
   const usdttry=getUSDTTRY();
   const sellTrades=portfolio.filter(t=>t.type==='sell'&&t.realizedPnl!=null);
+  // Sadece kapalı pozisyonların alım komisyonunu düş
+  const closedSyms=syms.filter(s=>calcPosition(s).lot<=0.000001);
+  const closedBuyComTRY=portfolio.filter(t=>t.type==='buy'&&t.commissionTRY&&closedSyms.includes(t.sym)).reduce((s,t)=>s+t.commissionTRY,0);
   const realizedTRY=sellTrades.filter(t=>t.currency==='TRY').reduce((s,t)=>s+t.realizedPnl,0)
-    + sellTrades.filter(t=>t.currency!=='TRY').reduce((s,t)=>s+t.realizedPnl*usdttry,0);
+    + sellTrades.filter(t=>t.currency!=='TRY').reduce((s,t)=>s+t.realizedPnl*usdttry,0)
+    - closedBuyComTRY;
 
   // Maliyet
   document.getElementById('psb-cost').textContent='₺'+fpTRY(totalCostTRY);
@@ -4036,7 +4150,7 @@ function updateSummaryBar(){
     const pnl=p.pnlTRY;
     const pct=p.pnlPct;
     const pos=pnl>=0;
-    const sign=pos?'+':'';
+    const sign=pos?'+':'-';
     const name=p.isEmtia?(emtiaPrices[p.sym]?.name?.slice(0,12)||p.sym):p.sym;
     return `<div class="psb-pill ${pos?'psb-pill-pos':'psb-pill-neg'}">
       <span class="psb-name ${pos?'psb-name-pos':'psb-name-neg'}">${name}</span>

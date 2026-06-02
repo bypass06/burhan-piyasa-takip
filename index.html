@@ -18,7 +18,7 @@
 </style>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Burhan Piyasa Takip v3.0 Final</title>
+<title>Burhan Piyasa Takip v1 Final</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -469,7 +469,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 .pf-closed-val{font-size:13px;font-weight:700;font-family:'Space Mono',monospace;}
 .pf-closed-actions{display:flex;gap:6px;padding:0 14px 11px;}
 
-/* ══ PORTFÖY KART — v3.0 yeni tasarım ══ */
+/* ══ PORTFÖY KART — v1 yeni tasarım ══ */
 .pf-card{
   background:#0f1117;
   border:1px solid rgba(255,255,255,0.07);
@@ -710,7 +710,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
     </div>
     <div>
       <div class="logo-text">Burhan Piyasa Takip</div>
-      <div class="logo-sub">v3.0 Final</div>
+      <div class="logo-sub">v1 Final</div>
     </div>
   </div>
   <div class="header-right">
@@ -1334,8 +1334,8 @@ async function authAction(){
   btn.textContent='...'; btn.disabled=true;
   try{
     const url = authMode==='login'
-      ? `${SUPA_URL}/auth/v3.0/token?grant_type=password`
-      : `${SUPA_URL}/auth/v3.0/signup`;
+      ? `${SUPA_URL}/auth/v1/token?grant_type=password`
+      : `${SUPA_URL}/auth/v1/signup`;
     const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_ANON}, body:JSON.stringify({email,password:pw})});
     const d = await r.json();
     if(d.error||d.error_description||d.msg){

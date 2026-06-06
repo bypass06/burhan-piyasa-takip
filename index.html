@@ -905,7 +905,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
       <span>TREND</span><span>SEVİYELER</span><span>DURUM</span><span></span>
     </div>
     <div id="bist-list">
-      <div class="loading-row">API key gir ve ↻ Güncelle butonuna bas.</div>
+      <div class="loading-row">Yükleniyor...</div>
     </div>
   </div>
 </div>
@@ -1130,7 +1130,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
       <div class="pf-field">
         <label class="pf-label" id="tm-amount-label">MİKTAR</label>
         <div style="position:relative;">
-          <input class="pf-input" id="tm-amount" type="number" placeholder="0.00" step="any" min="0" oninput="updateMatchList(document.getElementById('tm-coin-sym').value)">
+          <input class="pf-input" id="tm-amount" type="text" inputmode="decimal" placeholder="0.00" step="any" min="0" oninput="updateMatchList(document.getElementById('tm-coin-sym').value)">
           <div id="tm-lot-hint" style="display:none;margin-top:5px;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;">
             <span>Mevcut:</span>
             <span id="tm-lot-val" style="color:var(--purple);cursor:pointer;text-decoration:underline;" onclick="fillMaxLot()"></span>
@@ -1143,7 +1143,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
       <div class="pf-field">
         <label class="pf-label">Fiyat</label>
         <div style="display:flex;gap:8px;">
-          <input class="pf-input" id="tm-price" type="number" placeholder="0.00" step="any" min="0" style="flex:1;" oninput="updateMatchList(document.getElementById('tm-coin-sym').value)">
+          <input class="pf-input" id="tm-price" type="text" inputmode="decimal" placeholder="0.00" style="flex:1;" oninput="updateMatchList(document.getElementById('tm-coin-sym').value)">
           <div style="display:flex;gap:4px;">
             <button class="pf-cur-btn" id="tm-usdt-btn" onclick="setTradeCur('USDT')">USDT</button>
             <button class="pf-cur-btn active" id="tm-try-btn" onclick="setTradeCur('TRY')">TRY</button>
@@ -2789,37 +2789,59 @@ function toggleBistSort(){
 async function fetchBist(){
   document.getElementById('bist-status').textContent='Yükleniyor...';
   try{
-    const r=await fetch('https://api.collectapi.com/economy/liveBorsa',{
-      headers:{
-        'content-type':'application/json',
-        'authorization': COLLECTAPI_KEY
-      }
-    });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const d=await r.json();
-    if(!d.success) throw new Error('API hatası');
+    // 1) GitHub CSV'den hisse verisi al
+    const CSV_URL='https://raw.githubusercontent.com/bypass06/burhan-piyasa-takip/main/bist_data.csv';
+    const [csvResp, endeksResp] = await Promise.all([
+      fetch(CSV_URL+'?t='+Date.now()),
+      fetch('https://api.collectapi.com/economy/liveBorsa',{
+        headers:{'content-type':'application/json','authorization':COLLECTAPI_KEY}
+      })
+    ]);
 
-    const list=d.result||[];
+    // CSV hisseler
+    const text=await csvResp.text();
+    const satirlar=text.trim().split('\n');
+    const hisseler=[];
 
-    // Endeksleri ve hisseleri ayır
-    const endeksler=list.filter(h=>h.name.startsWith('X'));
-    const hisseler=list.filter(h=>!h.name.startsWith('X')&&!h.name.includes('25')&&!h.name.includes('26')&&h.price>0);
+    for(let i=1;i<satirlar.length;i++){
+      const cols=satirlar[i].split(',');
+      if(cols.length<2) continue;
+      const name=cols[0].trim();
+      if(!name) continue;
+      const price=parseFloat(cols[1])||0;
+      if(price<=0) continue;
+      const farkRaw=parseFloat(cols[4])||0;
+      const rate=Math.abs(farkRaw)<1 ? farkRaw*100 : farkRaw;
+      const low=parseFloat(cols[5])||0;
+      const high=parseFloat(cols[6])||0;
+      const hacim=parseFloat(cols[8])||0;
+      bistPrices[name]={price, rate, hacim, low, high, text:name, code:name};
+      hisseler.push({name, hacim});
+    }
 
-    // Hacime göre sırala — liveBorsa'da hacim alanı farklı
+    // 2) CollectAPI'den endeksler
+    const endeksler=[];
+    if(endeksResp.ok){
+      const endeksData=await endeksResp.json();
+      const endeksList=endeksData.result||[];
+      endeksList.forEach(h=>{
+        if(h.name && h.name.startsWith('X')){
+          bistPrices[h.name]={
+            price: h.price||0,
+            rate: parseFloat(h.rate)||0,
+            hacim: 0,
+            low: 0, high: 0,
+            text: h.name, code: h.name
+          };
+          endeksler.push(h.name);
+        }
+      });
+    }
+
+    // Hacime göre sırala
     bistList=hisseler
-      .sort((a,b)=>(parseFloat(b.hacimtl)||0)-(parseFloat(a.hacimtl)||0))
+      .sort((a,b)=>b.hacim-a.hacim)
       .map(h=>h.name);
-
-    // Tüm verileri kaydet
-    list.forEach(h=>{
-      bistPrices[h.name]={
-        price:  h.price,
-        rate:   h.rate||0,
-        hacim:  parseFloat(typeof h.hacimtl==='string'?h.hacimtl.replace(/\./g,'').replace(',','.'):h.hacimtl||0) || 0,
-        text:   h.name,
-        code:   h.name
-      };
-    });
 
     document.getElementById('bist-status').textContent='✓ '+hisseler.length+' hisse · '+endeksler.length+' endeks';
     document.getElementById('bist-last-update').textContent=
@@ -3902,6 +3924,38 @@ function selectTradeCoin(sym, assetType){
   updateMatchList(sym);
 }
 
+function parseTRNum(str){
+  if(!str) return NaN;
+  str=String(str).trim();
+  // Hem nokta hem virgül varsa: 10.800,50 → Türk formatı
+  if(str.includes('.') && str.includes(',')){
+    return parseFloat(str.replace(/\./g,'').replace(',','.'));
+  }
+  // Sadece virgül varsa
+  if(str.includes(',') && !str.includes('.')){
+    const parts=str.split(',');
+    const intPart=parts[0];
+    const decPart=parts[parts.length-1];
+    if(parts.length===2 && decPart.length===3 && intPart!=='0'){
+      const intVal=parseInt(intPart);
+      if(intVal >= 1000){
+        return parseFloat(str.replace(/,/g,''));
+      }
+    }
+    return parseFloat(str.replace(',','.'));
+  }
+  // Sadece nokta varsa
+  if(str.includes('.') && !str.includes(',')){
+    const parts=str.split('.');
+    const intPart=parts[0];
+    const decPart=parts[parts.length-1];
+    if(parts.length===2 && decPart.length===3 && intPart!=='0' && intPart.length>=1){
+      return parseFloat(str.replace(/\./g,''));
+    }
+  }
+  return parseFloat(str);
+}
+
 function saveTrade(){
   // Emtia için tm-coin-sym kullan, kripto/BIST için input değeri
   const hiddenSym=document.getElementById('tm-coin-sym').value.trim();
@@ -3920,30 +3974,6 @@ function saveTrade(){
   }
 
   // Türk formatı destekli sayı okuma: 10.800 → 10800, 10,80 → 10.80
-  function parseTRNum(str){
-    if(!str) return NaN;
-    str=str.trim();
-    // Hem nokta hem virgül varsa: 10.800,50 → Türk formatı
-    if(str.includes('.') && str.includes(',')){
-      return parseFloat(str.replace(/\./g,'').replace(',','.'));
-    }
-    // Sadece virgül varsa: 10,80 → ondalık virgül
-    if(str.includes(',') && !str.includes('.')){
-      return parseFloat(str.replace(',','.'));
-    }
-    // Sadece nokta varsa
-    if(str.includes('.') && !str.includes(',')){
-      const parts=str.split('.');
-      const intPart=parts[0];
-      const decPart=parts[parts.length-1];
-      // Binlik ayraç olması için: integer kısım 1+ haneli VE ondalık kısım tam 3 haneli VE integer kısım 0 değil
-      if(parts.length===2 && decPart.length===3 && intPart!=='0' && intPart.length>=1){
-        return parseFloat(str.replace(/\./g,''));
-      }
-    }
-    return parseFloat(str);
-  }
-
   const amount=parseTRNum(document.getElementById('tm-amount').value);
   const price=parseTRNum(document.getElementById('tm-price').value);
   const date=document.getElementById('tm-date').value;

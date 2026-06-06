@@ -3147,6 +3147,9 @@ function calcPosition(sym){
   const isTRYBased=isBist||isEmtia;
   let firstBuyDate=null; // Pozisyon yaşı için
 
+  // FIFO kuyruğu: [{amount, priceUSDT, priceTRY}]
+  const fifoQueue=[];
+
   trades.forEach(t=>{
     const usdttry=getUSDTTRY()||1;
     let priceUSDT, priceTRY;
@@ -3163,18 +3166,39 @@ function calcPosition(sym){
     const comUSDT = comTRY / usdttry;
 
     if(t.type==='buy'){
+      fifoQueue.push({amount:t.amount, priceUSDT, priceTRY, comUSDT, comTRY});
       costUSDT += t.amount * priceUSDT + comUSDT;
       costTRY  += t.amount * priceTRY  + comTRY;
       lot      += t.amount;
       if(!firstBuyDate) firstBuyDate = t.date;
     } else {
-      const ratio=Math.min(lot>0?t.amount/lot:1, 1);
-      costUSDT -= costUSDT * ratio;
-      costTRY  -= costTRY  * ratio;
-      lot      -= t.amount;
+      // FIFO: en eski alımdan düş
+      let remaining = t.amount;
+      while(remaining > 0.000001 && fifoQueue.length > 0){
+        const first = fifoQueue[0];
+        if(first.amount <= remaining + 0.000001){
+          // Bu lotun tamamını tüket
+          costUSDT -= first.amount * first.priceUSDT + first.comUSDT;
+          costTRY  -= first.amount * first.priceTRY  + first.comTRY;
+          remaining -= first.amount;
+          fifoQueue.shift();
+        } else {
+          // Kısmen tüket
+          const ratio = remaining / first.amount;
+          costUSDT -= remaining * first.priceUSDT + first.comUSDT * ratio;
+          costTRY  -= remaining * first.priceTRY  + first.comTRY  * ratio;
+          first.comUSDT -= first.comUSDT * ratio;
+          first.comTRY  -= first.comTRY  * ratio;
+          first.amount  -= remaining;
+          remaining = 0;
+        }
+      }
+      lot -= t.amount;
       if(lot<0) lot=0;
+      if(costTRY<0) costTRY=0;
+      if(costUSDT<0) costUSDT=0;
       // Eğer lot sıfırlandıysa firstBuyDate sıfırla
-      if(lot<=0.000001) firstBuyDate=null;
+      if(lot<=0.000001){ firstBuyDate=null; fifoQueue.length=0; }
     }
     history.push({...t, lotAfter:lot});
   });
@@ -3193,9 +3217,37 @@ function calcPosition(sym){
     ageDays=Math.floor((now-first)/(1000*60*60*24));
   }
 
-  const avgUSDT = lot>0 ? costUSDT/lot : 0;
-  const avgTRY  = lot>0 ? costTRY /lot : 0;
+  // avgTRY/avgUSDT/costTRY/costUSDT: kademelerden (açık alımların ağırlıklı ortalaması)
   const usdttry = getUSDTTRY();
+  const openBuys = portfolio
+    .filter(t=>t.sym===sym && t.type==='buy')
+    .map(t=>{
+      const matched=portfolio.filter(s=>s.sym===sym&&s.type==='sell'&&s.matchedBuyId===t.id);
+      const soldAmt=matched.reduce((s,x)=>s+(x.amount||0),0);
+      const remaining=t.amount-soldAmt;
+      return{...t, remaining};
+    })
+    .filter(t=>t.remaining>0.000001);
+
+  let avgTRY=0, avgUSDT=0;
+  if(openBuys.length>0){
+    const totalLotOpen=openBuys.reduce((s,t)=>s+t.remaining,0);
+    const totalCostTRY=openBuys.reduce((s,t)=>{
+      const p=isTRYBased?(t.currency==='TRY'?t.price:t.price*usdttry):(t.currency==='USDT'?t.price*usdttry:t.price);
+      const com=t.commissionTRY||0;
+      return s+p*t.remaining+com;
+    },0);
+    const totalCostUSDT=totalCostTRY/usdttry;
+    // costTRY ve costUSDT de kademelerden güncelle
+    costTRY=totalCostTRY;
+    costUSDT=totalCostUSDT;
+    lot=totalLotOpen;
+    avgTRY=totalLotOpen>0?totalCostTRY/totalLotOpen:0;
+    avgUSDT=avgTRY/usdttry;
+  } else {
+    avgUSDT = lot>0 ? costUSDT/lot : 0;
+    avgTRY  = lot>0 ? costTRY /lot : 0;
+  }
 
   let currentUSDT=0, currentTRY=0;
   if(isEmtia){
